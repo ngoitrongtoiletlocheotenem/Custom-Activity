@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "your-icon-worker",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-27",
+  "workers_dev": true,
+  "observability": { "enabled": false },
+  "r2_buckets": [{ "binding": "ICONS", "bucket_name": "REPLACE_WITH_EXISTING_BUCKET" }],
+  "vars": {
+    // Optional existing R2 public custom domain OR this Worker's public origin.
+    // Both must serve /icons/{sha256}.png; omit to use the Worker request origin.
+    "PUBLIC_IMAGE_BASE": ""
+  }
+}

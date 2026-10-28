@@ -1,0 +1,4 @@
+[target.x86_64-pc-windows-msvc]
+# Ship the native C++ standard library with the application. The official SDK
+# uses its own C ABI and allocator functions; its runtime stays a separate DLL.
+rustflags = ["-C", "target-feature=+crt-static"]

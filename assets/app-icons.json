@@ -1,0 +1,265 @@
+{
+  "schemaVersion": 2,
+  "fallback": {
+    "discordAssetKey": null,
+    "discordImageUrl": "https://raw.githubusercontent.com/microsoft/fluentui-emoji/1ffb34c752ecf5d402f04cfb4b392c77f57c54bc/assets/Desktop%20computer/3D/desktop_computer_3d.png"
+  },
+  "applications": [
+    {
+      "id": "visualstudiocode",
+      "displayName": "Visual Studio Code",
+      "executables": [
+        "Code.exe"
+      ],
+      "productNames": [
+        "Visual Studio Code"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": "https://media.githubusercontent.com/media/microsoft/vscode-docs/7bb7fea0c2cb18ff7ad45102c08f6f0ec7f14d87/images/logo-stable.png"
+    },
+    {
+      "id": "visualstudio",
+      "displayName": "Visual Studio",
+      "executables": [
+        "devenv.exe"
+      ],
+      "productNames": [
+        "Visual Studio"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "googlechrome",
+      "displayName": "Google Chrome",
+      "executables": [
+        "chrome.exe"
+      ],
+      "productNames": [
+        "Google Chrome"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "firefoxbrowser",
+      "displayName": "Mozilla Firefox",
+      "executables": [
+        "firefox.exe"
+      ],
+      "productNames": [
+        "Mozilla Firefox"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "microsoftedge",
+      "displayName": "Microsoft Edge",
+      "executables": [
+        "msedge.exe"
+      ],
+      "productNames": [
+        "Microsoft Edge"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "blender",
+      "displayName": "Blender",
+      "executables": [
+        "blender.exe"
+      ],
+      "productNames": [
+        "Blender"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "adobephotoshop",
+      "displayName": "Adobe Photoshop",
+      "executables": [
+        "Photoshop.exe"
+      ],
+      "productNames": [
+        "Adobe Photoshop"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "adobeillustrator",
+      "displayName": "Adobe Illustrator",
+      "executables": [
+        "Illustrator.exe"
+      ],
+      "productNames": [
+        "Adobe Illustrator"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "figma",
+      "displayName": "Figma",
+      "executables": [
+        "Figma.exe"
+      ],
+      "productNames": [
+        "Figma"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "spotify",
+      "displayName": "Spotify",
+      "executables": [
+        "Spotify.exe"
+      ],
+      "productNames": [
+        "Spotify"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "steam",
+      "displayName": "Steam",
+      "executables": [
+        "steam.exe"
+      ],
+      "productNames": [
+        "Steam"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "discord",
+      "displayName": "Discord",
+      "executables": [
+        "Discord.exe",
+        "DiscordCanary.exe",
+        "DiscordPTB.exe"
+      ],
+      "productNames": [
+        "Discord",
+        "Discord Canary",
+        "Discord PTB"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "notepad",
+      "displayName": "Notepad",
+      "executables": [
+        "notepad.exe"
+      ],
+      "productNames": [
+        "Notepad"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "obsstudio",
+      "displayName": "OBS Studio",
+      "executables": [
+        "obs64.exe"
+      ],
+      "productNames": [
+        "OBS Studio"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "unity",
+      "displayName": "Unity",
+      "executables": [
+        "Unity.exe"
+      ],
+      "productNames": [
+        "Unity"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "unrealengine",
+      "displayName": "Unreal Engine",
+      "executables": [
+        "UnrealEditor.exe"
+      ],
+      "productNames": [
+        "Unreal Engine"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "intellijidea",
+      "displayName": "IntelliJ IDEA",
+      "executables": [
+        "idea64.exe"
+      ],
+      "productNames": [
+        "IntelliJ IDEA"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "pycharm",
+      "displayName": "PyCharm",
+      "executables": [
+        "pycharm64.exe"
+      ],
+      "productNames": [
+        "PyCharm"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "webstorm",
+      "displayName": "WebStorm",
+      "executables": [
+        "webstorm64.exe"
+      ],
+      "productNames": [
+        "WebStorm"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "windowsterminal",
+      "displayName": "Windows Terminal",
+      "executables": [
+        "WindowsTerminal.exe"
+      ],
+      "productNames": [
+        "Windows Terminal"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": null
+    },
+    {
+      "id": "github-desktop",
+      "displayName": "GitHub Desktop",
+      "executables": [
+        "GitHubDesktop.exe"
+      ],
+      "productNames": [
+        "GitHub Desktop"
+      ],
+      "discordAssetKey": null,
+      "discordImageUrl": "https://avatars.githubusercontent.com/u/13171334?s=256"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CurrentActivity",
+  "version": "0.1.0",
+  "identifier": "app.currentactivity.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [{
+      "label": "main", "title": "CurrentActivity", "width": 540, "height": 800,
+      "minWidth": 440, "minHeight": 620, "center": true, "visible": false,
+      "resizable": true, "backgroundColor": "#111318"
+    }],
+    "security": { "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none'" }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico", "icons/icon.png"],
+    "resources": {"../assets/licenses/fluentui-emoji-MIT.txt": "notices/fluentui-emoji-MIT.txt"},
+    "category": "Utility",
+    "shortDescription": "Manually share one application with Discord",
+    "copyright": "Copyright 2026 CurrentActivity contributors",
+    "windows": { "nsis": { "installMode": "currentUser", "displayLanguageSelector": false, "installerHooks": "windows/hooks.nsh", "installerIcon": "icons/icon.ico", "uninstallerIcon": "icons/icon.ico" }, "webviewInstallMode": {"type":"embedBootstrapper", "silent":true} }
+  }
+}
+

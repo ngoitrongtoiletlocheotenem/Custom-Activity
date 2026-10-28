@@ -1,0 +1,11 @@
+pub mod applications;
+#[cfg(feature = "desktop")]
+pub mod commands;
+pub mod discord;
+pub mod icon_upload;
+pub mod presence;
+#[cfg(feature = "desktop")]
+pub mod runtime;
+pub mod settings;
+#[cfg(feature = "desktop")]
+pub mod tray;
