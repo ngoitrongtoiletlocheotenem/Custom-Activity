@@ -12,6 +12,9 @@ export interface ConnectionState {
   message: string;
 }
 export interface ActivityState {
+  applicationNameOverride?: string;
+  details?: string;
+  startedAt?: number | null;
   enabled: boolean;
   selectedApplication: DetectedApplication | null;
   description: string;

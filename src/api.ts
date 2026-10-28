@@ -28,6 +28,9 @@ export const emptyActivity: ActivityState = {
   enabled: false,
   selectedApplication: null,
   description: "",
+  applicationNameOverride: "",
+  details: "",
+  startedAt: null,
   discordState: { status: "disabled", message: "Activity disabled" },
   selectedApplicationRunning: false,
   resumeRequired: false,
@@ -45,8 +48,18 @@ export const api = {
   settings: () => invoke<Settings>("get_settings"),
   select: (appId: string) =>
     invoke<ActivityState>("select_application", { appId }),
-  publish: (appId: string, description: string) =>
-    invoke<ActivityState>("set_presence", { appId, description }),
+  publish: (
+    appId: string,
+    description: string,
+    applicationNameOverride = "",
+    details = "",
+  ) =>
+    invoke<ActivityState>("set_presence", {
+      appId,
+      description,
+      applicationNameOverride,
+      details,
+    }),
   enable: (enabled: boolean) =>
     invoke<ActivityState>("set_sharing_enabled", { enabled }),
   clear: () => invoke<ActivityState>("clear_presence"),
@@ -64,4 +77,11 @@ export function descriptionError(value: string): string | null {
     : Array.from(value).length === 1
       ? "Use at least 2 characters, or leave this empty."
       : null;
+}
+export function applicationNameError(value: string): string | null {
+  if (/[\u0000-\u001f\u007f-\u009f]/u.test(value))
+    return "Use plain text without control characters or line breaks.";
+  return new TextEncoder().encode(value).length > 128
+    ? "Use 128 UTF-8 bytes or fewer."
+    : null;
 }

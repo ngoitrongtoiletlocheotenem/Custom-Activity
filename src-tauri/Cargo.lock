@@ -662,6 +662,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tokio",
  "url",
+ "windows",
  "windows-sys 0.59.0",
  "winreg 0.55.0",
 ]

@@ -71,6 +71,8 @@ mod ffi {
             details: *const c_char,
             image: *const c_char,
             image_text: *const c_char,
+            state: *const c_char,
+            started_at_seconds: u64,
         ) -> i32;
         pub fn ca_discord_clear(handle: *mut c_void) -> i32;
         pub fn ca_discord_tick(handle: *mut c_void) -> i32;
@@ -136,12 +138,13 @@ impl PresenceProvider for SocialSdkProvider {
                 activity.description.as_deref().unwrap_or(""),
                 activity.large_image.as_deref().unwrap_or(""),
                 activity.large_image_text.as_deref().unwrap_or(""),
+                activity.details.as_deref().unwrap_or(""),
             ]
             .map(|v| {
                 CString::new(v).map_err(|_| "Activity contains an invalid character.".to_string())
             });
-            let [name, details, image, text] = fields;
-            let (name, details, image, text) = (name?, details?, image?, text?);
+            let [name, details, image, text, state] = fields;
+            let (name, details, image, text, state) = (name?, details?, image?, text?, state?);
             let result = ffi::result(unsafe {
                 ffi::ca_discord_set(
                     handle.as_ptr(),
@@ -149,6 +152,8 @@ impl PresenceProvider for SocialSdkProvider {
                     details.as_ptr(),
                     image.as_ptr(),
                     text.as_ptr(),
+                    state.as_ptr(),
+                    activity.started_at.unwrap_or(0),
                 )
             });
             #[cfg(debug_assertions)]

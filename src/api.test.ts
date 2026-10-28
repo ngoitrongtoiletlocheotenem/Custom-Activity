@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { descriptionError } from "./api";
+import { applicationNameError, descriptionError } from "./api";
 describe("Discord description validation", () => {
+  it("allows a one-character custom application name but enforces UTF-8 bytes and controls", () => {
+    expect(applicationNameError("")).toBeNull();
+    expect(applicationNameError("a")).toBeNull();
+    expect(applicationNameError("😀")).toBeNull();
+    expect(applicationNameError("😀".repeat(33))).toContain("128");
+    expect(applicationNameError("a\nb")).toContain("control");
+  });
   it("rejects a single Unicode scalar and control characters", () => {
     expect(descriptionError("😀")).toContain("2 characters");
     expect(descriptionError("hello\nworld")).toContain("control");

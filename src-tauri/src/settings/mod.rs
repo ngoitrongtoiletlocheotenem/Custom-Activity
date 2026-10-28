@@ -1,2 +1,2 @@
 pub mod store;
-pub use store::{Settings, SettingsDocument, SettingsStore};
+pub use store::{PresentationOverrides, Settings, SettingsDocument, SettingsStore};

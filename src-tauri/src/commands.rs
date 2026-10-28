@@ -60,9 +60,16 @@ pub async fn set_presence(
     service: State<'_, Service>,
     app_id: String,
     description: String,
+    application_name_override: Option<String>,
+    details: Option<String>,
 ) -> Result<ActivityState, String> {
     match service
-        .request(Action::SetPresence(app_id, description))
+        .request(Action::SetPresence(
+            app_id,
+            description,
+            application_name_override,
+            details,
+        ))
         .await?
     {
         Reply::State(v) => Ok(v),

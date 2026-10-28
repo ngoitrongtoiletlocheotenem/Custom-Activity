@@ -15,6 +15,7 @@ import {
   api,
   defaultSettings,
   descriptionError,
+  applicationNameError,
   desktop,
   emptyActivity,
 } from "./api";
@@ -27,12 +28,15 @@ import AppPicker from "./components/AppPicker";
 import AppIcon from "./components/AppIcon";
 import Settings from "./components/Settings";
 import Onboarding from "./components/Onboarding";
+import ElapsedTime from "./components/ElapsedTime";
 
 export default function App() {
   const [state, setState] = useState(emptyActivity),
     [settings, setSettings] = useState(defaultSettings),
     [apps, setApps] = useState<DetectedApplication[]>([]),
     [draft, setDraft] = useState(""),
+    [nameDraft, setNameDraft] = useState(""),
+    [detailsDraft, setDetailsDraft] = useState(""),
     [picker, setPicker] = useState(false),
     [page, setPage] = useState<"activity" | "settings">("activity"),
     [busy, setBusy] = useState(false),
@@ -45,6 +49,8 @@ export default function App() {
     setState(next);
     if (reset || !dirty.current) {
       setDraft(next.description);
+      setNameDraft(next.applicationNameOverride ?? "");
+      setDetailsDraft(next.details ?? "");
       dirty.current = false;
     }
   }, []);
@@ -121,12 +127,27 @@ export default function App() {
     };
   }, [apply, refresh]);
   const validation = descriptionError(draft);
+  const nameValidation = applicationNameError(nameDraft);
+  const detailsValidation = descriptionError(detailsDraft);
+  const anyValidation = validation || nameValidation || detailsValidation;
   const update = useCallback(() => {
-    if (!selected || validation || busy || !desktop) return;
+    if (!selected || anyValidation || busy || !desktop) return;
     void run(async () => {
-      apply(await api.publish(selected.id, draft), true);
+      apply(
+        await api.publish(selected.id, draft, nameDraft, detailsDraft),
+        true,
+      );
     });
-  }, [selected, validation, busy, draft, run, apply]);
+  }, [
+    selected,
+    anyValidation,
+    busy,
+    draft,
+    nameDraft,
+    detailsDraft,
+    run,
+    apply,
+  ]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === "Enter" && page === "activity" && !picker) {
@@ -153,7 +174,7 @@ export default function App() {
     desktop &&
     !!selected &&
     state.selectedApplicationRunning &&
-    !validation &&
+    !anyValidation &&
     !busy;
   return (
     <div className="shell">
@@ -259,7 +280,15 @@ export default function App() {
                   const enabled = e.target.checked;
                   void run(async () => {
                     if (enabled && selected) {
-                      apply(await api.publish(selected.id, draft), true);
+                      apply(
+                        await api.publish(
+                          selected.id,
+                          draft,
+                          nameDraft,
+                          detailsDraft,
+                        ),
+                        true,
+                      );
                     }
                     apply(await api.enable(enabled));
                   });
@@ -337,9 +366,38 @@ export default function App() {
               </div>
               <label
                 className="field-label description-label"
+                htmlFor="application-name-override"
+              >
+                Discord application name <span>Optional</span>
+              </label>
+              <input
+                id="application-name-override"
+                className="text-input"
+                style={{ minHeight: 0 }}
+                value={nameDraft}
+                placeholder={
+                  selected?.name || "Follow the selected application"
+                }
+                disabled={!desktop || !selected}
+                aria-invalid={!!nameValidation}
+                aria-describedby="name-hint"
+                onChange={(e) => {
+                  dirty.current = true;
+                  setNameDraft(e.target.value);
+                }}
+              />
+              <p
+                className={nameValidation ? "hint invalid" : "hint"}
+                id="name-hint"
+              >
+                {nameValidation ||
+                  "Leave blank to use the selected application’s name."}
+              </p>
+              <label
+                className="field-label description-label"
                 htmlFor="description"
               >
-                Description <span>Optional</span>
+                Description / activity title <span>Optional</span>
               </label>
               <textarea
                 id="description"
@@ -363,6 +421,36 @@ export default function App() {
                 </span>
                 <span>{new TextEncoder().encode(draft).length}/128</span>
               </div>
+              <label
+                className="field-label description-label"
+                htmlFor="activity-details"
+              >
+                Details <span>Optional</span>
+              </label>
+              <input
+                id="activity-details"
+                className="text-input"
+                style={{ minHeight: 0 }}
+                value={detailsDraft}
+                placeholder="Add a second line of context"
+                disabled={!desktop || !selected}
+                aria-invalid={!!detailsValidation}
+                aria-describedby="details-hint"
+                onChange={(e) => {
+                  dirty.current = true;
+                  setDetailsDraft(e.target.value);
+                }}
+              />
+              <div className="input-meta">
+                <span
+                  id="details-hint"
+                  className={detailsValidation ? "invalid" : ""}
+                >
+                  {detailsValidation ||
+                    "Saved only when you update your activity."}
+                </span>
+                <span>{new TextEncoder().encode(detailsDraft).length}/128</span>
+              </div>
             </section>
             <section className="preview-section">
               <div className="label-row">
@@ -376,14 +464,19 @@ export default function App() {
                 <div>
                   <span className="playing">PLAYING A GAME</span>
                   <strong>
-                    {selected?.name || "Your selected application"}
+                    {nameDraft.trim() ||
+                      selected?.name ||
+                      "Your selected application"}
                   </strong>
                   <p>{draft || "Your description will appear here"}</p>
+                  {detailsDraft && <p>{detailsDraft}</p>}
+                  <ElapsedTime startedAt={state.startedAt} />
                   <span className="preview-source">Local icon preview</span>
                 </div>
               </div>
               <p className="hint preview-note">
-                Actual appearance may vary in Discord. {settings.iconUpload?.enabled
+                Actual appearance may vary in Discord.{" "}
+                {settings.iconUpload?.enabled
                   ? "Your selected application's icon is uploaded to your configured host."
                   : "Discord uses a configured public image or asset. Executable icons stay local while uploads are off."}
               </p>

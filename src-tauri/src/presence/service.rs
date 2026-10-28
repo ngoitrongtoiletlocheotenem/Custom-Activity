@@ -20,7 +20,7 @@ pub enum Action {
     List,
     Foreground,
     Select(String),
-    SetPresence(String, String),
+    SetPresence(String, String, Option<String>, Option<String>),
     Enable(bool),
     Toggle,
     Clear,
@@ -191,7 +191,7 @@ fn run_worker(
                             manager.tick(discord, running, start.elapsed().as_millis() as u64);
                             Ok(Reply::State(manager.state.clone()))
                         }
-                        Action::SetPresence(id, text) => {
+                        Action::SetPresence(id, text, application_name_override, details) => {
                             running =
                                 manager
                                     .state
@@ -202,7 +202,16 @@ fn run_worker(
                                     });
                             discord = applications::is_discord_running();
                             manager.tick(discord, running, start.elapsed().as_millis() as u64);
-                            manager.submit_presence(&id, text, |document| store.save(document))?;
+                            let name = application_name_override
+                                .unwrap_or_else(|| manager.state.application_name_override.clone());
+                            let details = details.unwrap_or_else(|| manager.state.details.clone());
+                            manager.submit_presence_with_overrides(
+                                &id,
+                                text,
+                                name,
+                                details,
+                                |document| store.save(document),
+                            )?;
                             manager.tick(discord, running, start.elapsed().as_millis() as u64);
                             Ok(Reply::State(manager.state.clone()))
                         }
@@ -215,9 +224,12 @@ fn run_worker(
                                     .is_some_and(|a| {
                                         applications::is_application_running(&a.executable_path)
                                     });
-                            manager.state.selected_application_running = running;
-                            manager.set_enabled(value)?;
+                            // Observe a process stop before an enable request can fail.
+                            // Assigning the flag directly would hide the transition
+                            // from tick and leave the old activity/session published.
                             discord = applications::is_discord_running();
+                            manager.tick(discord, running, start.elapsed().as_millis() as u64);
+                            manager.set_enabled(value)?;
                             manager.tick(discord, running, start.elapsed().as_millis() as u64);
                             Ok(Reply::State(manager.state.clone()))
                         }
@@ -231,9 +243,9 @@ fn run_worker(
                                     .is_some_and(|a| {
                                         applications::is_application_running(&a.executable_path)
                                     });
-                            manager.state.selected_application_running = running;
-                            manager.set_enabled(value)?;
                             discord = applications::is_discord_running();
+                            manager.tick(discord, running, start.elapsed().as_millis() as u64);
+                            manager.set_enabled(value)?;
                             manager.tick(discord, running, start.elapsed().as_millis() as u64);
                             Ok(Reply::State(manager.state.clone()))
                         }

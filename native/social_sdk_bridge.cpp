@@ -15,6 +15,8 @@ struct State { bool connected = false;
     int update_result = -1;
     int32_t callback_error_code = 0;
     std::string large_image, large_text;
+    bool state_present = false, timestamps_attached = false;
+    uint64_t start_timestamp_milliseconds = 0;
 #endif
 };
 #ifdef CA_DISCORD_DIAGNOSTICS
@@ -77,7 +79,7 @@ int ca_discord_connect(void* handle) noexcept {
 int ca_discord_connected(void* handle) noexcept {
     return handle && static_cast<Bridge*>(handle)->state->connected ? 1 : 0;
 }
-int ca_discord_set(void* handle, const char* name, const char* details, const char* image, const char* image_text) noexcept {
+int ca_discord_set(void* handle, const char* name, const char* details, const char* image, const char* image_text, const char* state_text, uint64_t started_at_seconds) noexcept {
     try {
         auto& bridge = *static_cast<Bridge*>(handle);
 #ifdef CA_DISCORD_DIAGNOSTICS
@@ -90,11 +92,23 @@ int ca_discord_set(void* handle, const char* name, const char* details, const ch
         bridge.state->callback_error_code = 0;
         bridge.state->large_image.clear();
         bridge.state->large_text.clear();
+        bridge.state->state_present = false;
+        bridge.state->timestamps_attached = false;
+        bridge.state->start_timestamp_milliseconds = 0;
 #endif
         discordpp::Activity activity;
         activity.SetType(discordpp::ActivityTypes::Playing);
         activity.SetName(name);
         if (*details) activity.SetDetails(details);
+        if (*state_text) activity.SetState(state_text);
+        if (started_at_seconds) {
+            if (started_at_seconds > 253402300799ULL) return 1;
+            discordpp::ActivityTimestamps timestamps;
+            // SDK 1.10.19337 discordpp.h documents milliseconds. Its automatic
+            // seconds heuristic is avoided: our C ABI takes explicit seconds.
+            timestamps.SetStart(started_at_seconds * 1000ULL);
+            activity.SetTimestamps(timestamps);
+        }
         if (*image) {
             discordpp::ActivityAssets assets;
 #ifdef CA_DISCORD_DIAGNOSTICS
@@ -112,6 +126,10 @@ int ca_discord_set(void* handle, const char* name, const char* details, const ch
         // optional<string> setter temporaries have been destroyed. This also
         // verifies the SDK's owned-copy contract across SetAssets.
         auto attached_assets = activity.Assets();
+        bridge.state->state_present = activity.State().has_value();
+        auto attached_timestamps = activity.Timestamps();
+        bridge.state->timestamps_attached = attached_timestamps.has_value();
+        if (attached_timestamps) bridge.state->start_timestamp_milliseconds = attached_timestamps->Start();
         bridge.state->assets_attached = attached_assets.has_value();
         if (attached_assets) {
             bridge.state->large_image = attached_assets->LargeImage().value_or("");
@@ -154,7 +172,10 @@ size_t ca_discord_diagnostics(void* handle, char* output, size_t capacity) noexc
             + ",\"updateCallbackReceived\":" + boolean(s.callback_received)
             + ",\"updateCallbackSuccessful\":" + boolean(s.callback_successful)
             + ",\"updateCallbackErrorCode\":" + std::to_string(s.callback_error_code)
-            + ",\"updateResult\":" + std::to_string(s.update_result) + "}";
+            + ",\"updateResult\":" + std::to_string(s.update_result)
+            + ",\"statePresent\":" + boolean(s.state_present)
+            + ",\"timestampsAttached\":" + boolean(s.timestamps_attached)
+            + ",\"startTimestampMilliseconds\":" + std::to_string(s.start_timestamp_milliseconds) + "}";
         if (output && capacity >= json.size() + 1) std::memcpy(output, json.c_str(), json.size() + 1);
         return json.size() + 1;
     } catch (...) { return 0; }

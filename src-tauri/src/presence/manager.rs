@@ -1,7 +1,7 @@
 use crate::{
     applications::{DetectedApplication, IconResolver, MappedIconResolver},
     discord::{PresenceActivity, PresenceProvider},
-    settings::{Settings, SettingsDocument},
+    settings::{PresentationOverrides, Settings, SettingsDocument},
 };
 use serde::{Deserialize, Serialize};
 
@@ -17,6 +17,10 @@ pub struct ActivityState {
     pub enabled: bool,
     pub selected_application: Option<DetectedApplication>,
     pub description: String,
+    pub application_name_override: String,
+    pub details: String,
+    /// Unix seconds for this activity session, independent of transport state.
+    pub started_at: Option<u64>,
     pub discord_state: ConnectionState,
     pub selected_application_running: bool,
     pub resume_required: bool,
@@ -28,6 +32,9 @@ impl Default for ActivityState {
             enabled: false,
             selected_application: None,
             description: String::new(),
+            application_name_override: String::new(),
+            details: String::new(),
+            started_at: None,
             discord_state: ConnectionState {
                 status: "disabled".into(),
                 message: "Activity disabled".into(),
@@ -48,9 +55,21 @@ pub struct Manager {
     failures: usize,
     attempted: bool,
     uploaded_icon: Option<(String, String)>,
+    epoch_at_creation: u64,
 }
 impl Manager {
     pub fn new(provider: Box<dyn PresenceProvider>, document: SettingsDocument) -> Self {
+        let epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        Self::with_epoch(provider, document, epoch)
+    }
+    fn with_epoch(
+        provider: Box<dyn PresenceProvider>,
+        document: SettingsDocument,
+        epoch_at_creation: u64,
+    ) -> Self {
         Self {
             state: ActivityState::default(),
             document,
@@ -61,6 +80,7 @@ impl Manager {
             failures: 0,
             attempted: false,
             uploaded_icon: None,
+            epoch_at_creation,
         }
     }
     fn connection(&mut self, status: &str, message: impl Into<String>) {
@@ -81,6 +101,15 @@ impl Manager {
     }
     pub fn select(&mut self, app: DetectedApplication) -> Result<(), String> {
         self.clear()?;
+        if self
+            .state
+            .selected_application
+            .as_ref()
+            .map(|selected| &selected.id)
+            != Some(&app.id)
+        {
+            self.state.started_at = None;
+        }
         self.uploaded_icon = None;
         self.state.description = if self.document.settings.remember_descriptions {
             self.document
@@ -91,6 +120,17 @@ impl Manager {
         } else {
             String::new()
         };
+        let presentation = if self.document.settings.remember_descriptions {
+            self.document
+                .presentations
+                .get(&app.id)
+                .cloned()
+                .unwrap_or_default()
+        } else {
+            PresentationOverrides::default()
+        };
+        self.state.application_name_override = presentation.application_name_override;
+        self.state.details = presentation.details;
         self.state.selected_application_running = app.running;
         self.state.selected_application = Some(app);
         self.state.resume_required = false;
@@ -98,7 +138,34 @@ impl Manager {
         Ok(())
     }
     pub fn set_presence(&mut self, app_id: &str, description: String) -> Result<(), String> {
+        self.set_presence_with_overrides(
+            app_id,
+            description,
+            self.state.application_name_override.clone(),
+            self.state.details.clone(),
+        )
+    }
+    pub fn set_presence_with_overrides(
+        &mut self,
+        app_id: &str,
+        description: String,
+        application_name_override: String,
+        details: String,
+    ) -> Result<(), String> {
         crate::discord::provider::validate_description(&description)?;
+        crate::discord::provider::validate_description(&details)?;
+        if application_name_override.len() > 128
+            || application_name_override.chars().any(char::is_control)
+        {
+            return Err(
+                "Application name must be at most 128 UTF-8 bytes without control characters."
+                    .into(),
+            );
+        }
+        let application_name_override = application_name_override.trim().to_owned();
+        if !application_name_override.is_empty() {
+            crate::discord::provider::validate_activity_name(&application_name_override)?;
+        }
         let app = self
             .state
             .selected_application
@@ -112,8 +179,17 @@ impl Manager {
             self.document
                 .descriptions
                 .insert(app.id.clone(), description.clone());
+            self.document.presentations.insert(
+                app.id.clone(),
+                PresentationOverrides {
+                    application_name_override: application_name_override.clone(),
+                    details: details.clone(),
+                },
+            );
         }
         self.state.description = description;
+        self.state.application_name_override = application_name_override;
+        self.state.details = details;
         self.state.resume_required = false;
         // An explicit user action permits one connection attempt even with auto-reconnect off.
         self.attempted = false;
@@ -126,12 +202,30 @@ impl Manager {
         description: String,
         persist: impl FnOnce(&SettingsDocument) -> Result<(), String>,
     ) -> Result<(), String> {
+        self.submit_presence_with_overrides(
+            app_id,
+            description,
+            self.state.application_name_override.clone(),
+            self.state.details.clone(),
+            persist,
+        )
+    }
+    pub fn submit_presence_with_overrides(
+        &mut self,
+        app_id: &str,
+        description: String,
+        application_name_override: String,
+        details: String,
+        persist: impl FnOnce(&SettingsDocument) -> Result<(), String>,
+    ) -> Result<(), String> {
         let previous_state = self.state.clone();
         let previous_document = self.document.clone();
-        self.set_presence(app_id, description)?;
+        let previous_retry = (self.attempted, self.next_attempt);
+        self.set_presence_with_overrides(app_id, description, application_name_override, details)?;
         if let Err(error) = persist(&self.document) {
             self.state = previous_state;
             self.document = previous_document;
+            (self.attempted, self.next_attempt) = previous_retry;
             return Err(error);
         }
         Ok(())
@@ -145,6 +239,7 @@ impl Manager {
         }
         self.state.enabled = enabled;
         if !enabled {
+            self.state.started_at = None;
             self.uploaded_icon = None;
             let result = self.clear();
             let _ = self.provider.disconnect();
@@ -170,6 +265,7 @@ impl Manager {
         settings.validate()?;
         if !settings.remember_descriptions {
             self.document.descriptions.clear();
+            self.document.presentations.clear();
         }
         if settings.automatically_reconnect && !self.document.settings.automatically_reconnect {
             self.attempted = false;
@@ -231,6 +327,9 @@ impl Manager {
                 "largeText":raw["finalLargeText"], "callbackReceived":raw["updateCallbackReceived"],
                 "callbackSuccessful":raw["updateCallbackSuccessful"], "callbackErrorCode":raw["updateCallbackErrorCode"],
                 "updateResult":raw["updateResult"]
+                ,"statePresent":raw["statePresent"],
+                "timestampsAttached":raw["timestampsAttached"],
+                "startTimestampMilliseconds":raw["startTimestampMilliseconds"]
             }))
         })
     }
@@ -255,6 +354,7 @@ impl Manager {
             app.running = self.state.selected_application_running;
         }
         if was_running && !app_running {
+            self.state.started_at = None;
             self.state.resume_required = !self.document.settings.auto_resume;
             if let Err(error) = self.clear() {
                 self.connection("error", error);
@@ -263,6 +363,14 @@ impl Manager {
         if !self.state.enabled {
             self.connection("disabled", "Activity disabled");
             return;
+        }
+        if self.state.selected_application_running
+            && !self.state.resume_required
+            && self.state.started_at.is_none()
+        {
+            // Anchor once to wall time; reconnects and subsequent clock changes
+            // do not create a new session. The worker supplies monotonic time.
+            self.state.started_at = Some(self.epoch_at_creation.saturating_add(now / 1000).max(1));
         }
         if !discord_running {
             let _ = self.clear();
@@ -314,14 +422,28 @@ impl Manager {
             return;
         };
         let activity = PresenceActivity {
-            application_name: app.name.clone(),
+            application_name: if self.state.application_name_override.is_empty() {
+                app.name.clone()
+            } else {
+                self.state.application_name_override.clone()
+            },
             description: if self.state.description.is_empty() {
                 None
             } else {
                 Some(self.state.description.clone())
             },
+            details: if self.state.details.is_empty() {
+                None
+            } else {
+                Some(self.state.details.clone())
+            },
+            started_at: self.state.started_at,
             large_image: self.discord_icon_image(app),
-            large_image_text: Some(app.name.clone()),
+            large_image_text: Some(if self.state.application_name_override.is_empty() {
+                app.name.clone()
+            } else {
+                self.state.application_name_override.clone()
+            }),
         };
         if self.last_activity.as_ref() != Some(&activity) {
             #[cfg(debug_assertions)]
@@ -345,6 +467,7 @@ impl Manager {
     }
     pub fn shutdown(&mut self) {
         self.state.enabled = false;
+        self.state.started_at = None;
         let _ = self.clear();
         let _ = self.provider.disconnect();
     }
@@ -361,6 +484,7 @@ mod tests {
         connects: usize,
         fail: bool,
         clear_fails: bool,
+        tick_fails: bool,
     }
     struct Mock {
         calls: Arc<Mutex<Calls>>,
@@ -396,17 +520,25 @@ mod tests {
         fn is_connected(&self) -> bool {
             self.connected
         }
+        fn tick(&mut self) -> Result<(), String> {
+            if self.calls.lock().unwrap().tick_fails {
+                Err("Transport disconnected".into())
+            } else {
+                Ok(())
+            }
+        }
     }
     fn setup() -> (Manager, Arc<Mutex<Calls>>) {
         let calls = Arc::new(Mutex::new(Calls::default()));
         let mut doc = SettingsDocument::default();
         doc.settings.onboarding_complete = true;
-        let mut m = Manager::new(
+        let mut m = Manager::with_epoch(
             Box::new(Mock {
                 calls: calls.clone(),
                 connected: false,
             }),
             doc,
+            1_800_000_000,
         );
         m.select(DetectedApplication {
             id: "a".repeat(64),
@@ -495,7 +627,10 @@ mod tests {
         let json = serde_json::to_string(&c.lock().unwrap().sets[0]).unwrap();
         assert!(!json.contains("private"));
         assert!(!json.contains("executable"));
-        assert!(!json.contains("42"));
+        let outbound: serde_json::Value = serde_json::from_str(&json).unwrap();
+        for field in ["executablePath", "processIds", "iconDataUrl", "id"] {
+            assert!(outbound.get(field).is_none());
+        }
         assert!(c.lock().unwrap().sets[0]
             .large_image
             .as_deref()
@@ -586,5 +721,137 @@ mod tests {
         m.set_enabled(false).unwrap();
         m.set_uploaded_icon(&"a".repeat(64), Some(image));
         assert!(m.uploaded_icon.is_none());
+    }
+
+    #[test]
+    fn elapsed_session_survives_offline_start_reconnect_and_transport_failure() {
+        let (mut m, calls) = setup();
+        m.set_enabled(true).unwrap();
+        m.tick(false, true, 2_000);
+        let start = Some(1_800_000_002);
+        assert_eq!(m.state.started_at, start);
+        assert!(calls.lock().unwrap().sets.is_empty());
+        m.tick(true, true, 5_000);
+        assert_eq!(calls.lock().unwrap().sets[0].started_at, start);
+        m.tick(false, true, 8_000);
+        m.tick(true, true, 12_000);
+        assert_eq!(m.state.started_at, start);
+        calls.lock().unwrap().tick_fails = true;
+        m.tick(true, true, 15_000);
+        assert!(!m.state.published);
+        assert_eq!(m.state.started_at, start);
+        calls.lock().unwrap().tick_fails = false;
+        m.tick(true, true, 16_000);
+        assert!(m.state.published);
+        assert!(calls
+            .lock()
+            .unwrap()
+            .sets
+            .iter()
+            .all(|activity| activity.started_at == start));
+    }
+
+    #[test]
+    fn text_icon_and_provider_changes_preserve_time_but_real_stops_reset_it() {
+        let (mut m, calls) = setup();
+        m.set_enabled(true).unwrap();
+        m.tick(true, true, 1_000);
+        let start = m.state.started_at;
+        m.set_presence_with_overrides(
+            &"a".repeat(64),
+            "A title".into(),
+            "Custom game".into(),
+            "A detail".into(),
+        )
+        .unwrap();
+        m.tick(true, true, 6_000);
+        m.document.settings.icon_upload.enabled = true;
+        m.document.settings.icon_upload.consent_granted = true;
+        m.set_uploaded_icon(
+            &"a".repeat(64),
+            Some("https://icons.example.com/icons/image.png".into()),
+        );
+        m.tick(true, true, 7_000);
+        assert!(calls
+            .lock()
+            .unwrap()
+            .sets
+            .iter()
+            .all(|activity| activity.started_at == start));
+        let new_calls = Arc::new(Mutex::new(Calls::default()));
+        m.replace_provider(Box::new(Mock {
+            calls: new_calls.clone(),
+            connected: false,
+        }));
+        m.tick(true, true, 8_000);
+        assert_eq!(new_calls.lock().unwrap().sets[0].started_at, start);
+        m.set_enabled(false).unwrap();
+        assert_eq!(m.state.started_at, None);
+        m.set_enabled(true).unwrap();
+        m.tick(true, true, 20_000);
+        assert_eq!(m.state.started_at, Some(1_800_000_020));
+        m.document.settings.auto_resume = true;
+        m.tick(true, false, 22_000);
+        assert_eq!(m.state.started_at, None);
+        m.tick(true, true, 25_000);
+        assert_eq!(m.state.started_at, Some(1_800_000_025));
+        let mut next = m.state.selected_application.clone().unwrap();
+        next.id = "b".repeat(64);
+        m.select(next).unwrap();
+        assert_eq!(m.state.started_at, None);
+        m.tick(true, true, 30_000);
+        assert_eq!(m.state.started_at, Some(1_800_000_030));
+    }
+
+    #[test]
+    fn overrides_are_explicit_remembered_and_rollback_together() {
+        let (mut m, calls) = setup();
+        let id = "a".repeat(64);
+        m.set_presence_with_overrides(
+            &id,
+            "Title".into(),
+            "  My game  ".into(),
+            "More detail".into(),
+        )
+        .unwrap();
+        m.set_enabled(true).unwrap();
+        m.tick(true, true, 0);
+        {
+            let sent = &calls.lock().unwrap().sets[0];
+            assert_eq!(sent.application_name, "My game");
+            assert_eq!(sent.description.as_deref(), Some("Title"));
+            assert_eq!(sent.details.as_deref(), Some("More detail"));
+            assert_eq!(sent.large_image_text.as_deref(), Some("My game"));
+        }
+        assert!(m
+            .submit_presence_with_overrides(
+                &id,
+                "Replacement".into(),
+                "Wrong name".into(),
+                "Wrong detail".into(),
+                |_| Err("Disk full".into())
+            )
+            .is_err());
+        assert_eq!(m.state.application_name_override, "My game");
+        assert_eq!(m.state.details, "More detail");
+        assert_eq!(
+            m.document.presentations[&id].application_name_override,
+            "My game"
+        );
+        let selected = m.state.selected_application.clone().unwrap();
+        m.select(selected).unwrap();
+        assert_eq!(m.state.application_name_override, "My game");
+        assert_eq!(m.state.details, "More detail");
+        let mut preferences = m.document.settings.clone();
+        preferences.remember_descriptions = false;
+        m.update_settings(preferences).unwrap();
+        assert!(m.document.presentations.is_empty());
+        let selected = m.state.selected_application.clone().unwrap();
+        m.select(selected).unwrap();
+        assert!(m.state.application_name_override.is_empty());
+        assert!(m.state.details.is_empty());
+        assert!(m
+            .set_presence_with_overrides(&id, "Title".into(), "\nName\n".into(), String::new())
+            .is_err());
     }
 }

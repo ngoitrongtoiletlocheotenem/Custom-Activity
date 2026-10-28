@@ -20,6 +20,9 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      - run: npm ci --prefix cloudflare
+      - run: npm --prefix cloudflare run check
+      - run: npm --prefix cloudflare test
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --locked --manifest-path src-tauri/Cargo.toml

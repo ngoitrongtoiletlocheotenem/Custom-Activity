@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 pub struct PresenceActivity {
     pub application_name: String,
     pub description: Option<String>,
+    pub details: Option<String>,
+    /// Unix epoch seconds; converted explicitly to SDK milliseconds by the bridge.
+    pub started_at: Option<u64>,
     pub large_image: Option<String>,
     pub large_image_text: Option<String>,
 }
@@ -128,16 +131,27 @@ pub fn validate_description(value: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub fn validate_activity(activity: &PresenceActivity) -> Result<(), String> {
-    if activity.application_name.trim().is_empty()
-        || activity.application_name.len() > 128
-        || activity.application_name.chars().any(char::is_control)
-    {
+pub fn validate_activity_name(value: &str) -> Result<(), String> {
+    if value.trim().is_empty() || value.len() > 128 || value.chars().any(char::is_control) {
         return Err(
             "Application name must contain 1–128 UTF-8 bytes without control characters.".into(),
         );
     }
+    Ok(())
+}
+
+pub fn validate_activity(activity: &PresenceActivity) -> Result<(), String> {
+    validate_activity_name(&activity.application_name)?;
     validate_description(activity.description.as_deref().unwrap_or(""))?;
+    validate_description(activity.details.as_deref().unwrap_or("")).map_err(|_| {
+        "Details must be empty or contain 2–128 UTF-8 bytes without control characters.".to_string()
+    })?;
+    if activity
+        .started_at
+        .is_some_and(|value| value == 0 || value > 253_402_300_799)
+    {
+        return Err("Activity start must be positive Unix seconds before year 10000.".into());
+    }
     if activity
         .large_image_text
         .as_ref()
@@ -172,6 +186,8 @@ mod tests {
         let mut a = PresenceActivity {
             application_name: "Code".into(),
             description: None,
+            details: None,
+            started_at: None,
             large_image: Some("C:\\private\\icon.png".into()),
             large_image_text: None,
         };
@@ -184,6 +200,8 @@ mod tests {
         let mut a = PresenceActivity {
             application_name: "😀".repeat(32),
             description: None,
+            details: None,
+            started_at: None,
             large_image: None,
             large_image_text: None,
         };
@@ -230,5 +248,28 @@ mod tests {
         assert!(is_valid_discord_image(
             "https://avatars.githubusercontent.com/u/13171334?s=256"
         ));
+    }
+    #[test]
+    fn secondary_details_and_epoch_seconds_are_validated() {
+        let mut activity = PresenceActivity {
+            application_name: "Editor".into(),
+            description: Some("Title".into()),
+            details: Some("Second line".into()),
+            started_at: Some(1_793_088_000),
+            large_image: None,
+            large_image_text: None,
+        };
+        assert!(validate_activity(&activity).is_ok());
+        for bad in ["x".to_owned(), "private\ntext".to_owned(), "界".repeat(43)] {
+            activity.details = Some(bad);
+            assert!(validate_activity(&activity).is_err());
+        }
+        activity.details = Some(String::new());
+        for bad in [0, 253_402_300_800, u64::MAX] {
+            activity.started_at = Some(bad);
+            assert!(validate_activity(&activity).is_err());
+        }
+        activity.started_at = Some(253_402_300_799);
+        assert!(validate_activity(&activity).is_ok());
     }
 }

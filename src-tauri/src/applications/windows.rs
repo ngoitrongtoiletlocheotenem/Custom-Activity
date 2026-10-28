@@ -3,17 +3,16 @@ use super::{application_id, normalize_name, normalized_identity, DetectedApplica
 use base64::{engine::general_purpose::STANDARD, Engine};
 use std::{
     ffi::c_void,
-    io::Cursor,
     mem::{size_of, zeroed},
     path::Path,
     ptr::null_mut,
 };
 use windows_sys::Win32::{
     Foundation::*,
-    Graphics::{Dwm::*, Gdi::*},
+    Graphics::Dwm::*,
     Storage::FileSystem::*,
     System::{Diagnostics::ToolHelp::*, Threading::*},
-    UI::{Shell::*, WindowsAndMessaging::*},
+    UI::WindowsAndMessaging::*,
 };
 
 struct OwnedHandle(HANDLE);
@@ -251,91 +250,56 @@ fn cached_icon(path: &str, cache: &Path) -> Option<String> {
     // Timestamp/size make replacement executables invalidate disposable cached icons.
     let file = super::icon_cache_file(path, cache)?;
     if let Ok(bytes) = std::fs::read(&file) {
-        if bytes.len() <= 128 * 1024 {
+        if super::icon_extractor::validated_png(&bytes) {
             return Some(format!("data:image/png;base64,{}", STANDARD.encode(bytes)));
         }
     }
-    let bytes = extract_icon(path)?;
+    // Avoid repeatedly invoking Shell/resource fallbacks for an iconless foreground
+    // application. Identity changes bypass the bounded, short-lived negative cache.
+    static FAILURES: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, std::time::Instant>>,
+    > = std::sync::OnceLock::new();
+    let failures = FAILURES.get_or_init(Default::default);
+    if failures.lock().ok().is_some_and(|entries| {
+        entries
+            .get(&file)
+            .is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(30))
+    }) {
+        return None;
+    }
+    let extracted = match super::icon_extractor::extract_application_icon(Path::new(path)) {
+        Ok(icon) => icon,
+        Err(_) => {
+            if let Ok(mut entries) = failures.lock() {
+                entries.retain(|_, at| at.elapsed() < std::time::Duration::from_secs(30));
+                if entries.len() >= 256 {
+                    entries.clear();
+                }
+                entries.insert(file, std::time::Instant::now());
+            }
+            return None;
+        }
+    };
+    let bytes = extracted.png;
     if std::fs::create_dir_all(cache).is_ok() {
         // At most 256 files; remove oldest entries before adding another.
         if let Ok(entries) = std::fs::read_dir(cache) {
             let mut entries: Vec<_> = entries
                 .flatten()
-                .filter(|e| e.path().extension().is_some_and(|x| x == "png"))
+                .filter(|e| {
+                    e.path().extension().is_some_and(|x| x == "png")
+                        && !e.file_name().to_string_lossy().ends_with(".original.png")
+                })
                 .collect();
             entries.sort_by_key(|e| e.metadata().and_then(|m| m.modified()).ok());
             let remove = entries.len().saturating_sub(255);
             for entry in entries.into_iter().take(remove) {
+                let _ = std::fs::remove_file(entry.path().with_extension("original.png"));
                 let _ = std::fs::remove_file(entry.path());
             }
         }
+        let _ = std::fs::write(file.with_extension("original.png"), &extracted.original_png);
         let _ = std::fs::write(file, &bytes);
     }
     Some(format!("data:image/png;base64,{}", STANDARD.encode(bytes)))
-}
-
-fn extract_icon(path: &str) -> Option<Vec<u8>> {
-    unsafe {
-        let mut info: SHFILEINFOW = zeroed();
-        if SHGetFileInfoW(
-            wide(path).as_ptr(),
-            0,
-            &mut info,
-            size_of::<SHFILEINFOW>() as u32,
-            SHGFI_ICON | SHGFI_LARGEICON,
-        ) == 0
-            || info.hIcon.is_null()
-        {
-            return None;
-        }
-        let icon = info.hIcon;
-        let dc = CreateCompatibleDC(null_mut());
-        if dc.is_null() {
-            DestroyIcon(icon);
-            return None;
-        }
-        let mut bitmap_info: BITMAPINFO = zeroed();
-        bitmap_info.bmiHeader.biSize = size_of::<BITMAPINFOHEADER>() as u32;
-        bitmap_info.bmiHeader.biWidth = 64;
-        bitmap_info.bmiHeader.biHeight = -64;
-        bitmap_info.bmiHeader.biPlanes = 1;
-        bitmap_info.bmiHeader.biBitCount = 32;
-        bitmap_info.bmiHeader.biCompression = BI_RGB;
-        let mut bits: *mut c_void = null_mut();
-        let bitmap = CreateDIBSection(dc, &bitmap_info, DIB_RGB_COLORS, &mut bits, null_mut(), 0);
-        if bitmap.is_null() || bits.is_null() {
-            DeleteDC(dc);
-            DestroyIcon(icon);
-            return None;
-        }
-        let old = SelectObject(dc, bitmap);
-        std::ptr::write_bytes(bits, 0, 64 * 64 * 4);
-        let drawn = DrawIconEx(dc, 0, 0, icon, 64, 64, 0, null_mut(), DI_NORMAL);
-        let mut pixels = std::slice::from_raw_parts(bits as *const u8, 64 * 64 * 4).to_vec();
-        SelectObject(dc, old);
-        DeleteObject(bitmap);
-        DeleteDC(dc);
-        DestroyIcon(icon);
-        if drawn == 0 {
-            return None;
-        }
-        let (rgba_pixels, _) = pixels.as_chunks_mut::<4>();
-        for pixel in rgba_pixels.iter_mut() {
-            pixel.swap(0, 2);
-        }
-        // Older icons use a mask rather than alpha; keep their opaque RGB visible.
-        if rgba_pixels.iter().all(|p| p[3] == 0) {
-            for pixel in rgba_pixels.iter_mut() {
-                if pixel[0] != 0 || pixel[1] != 0 || pixel[2] != 0 {
-                    pixel[3] = 255;
-                }
-            }
-        }
-        let image = image::RgbaImage::from_raw(64, 64, pixels)?;
-        let mut output = Cursor::new(Vec::new());
-        image::DynamicImage::ImageRgba8(image)
-            .write_to(&mut output, image::ImageFormat::Png)
-            .ok()?;
-        Some(output.into_inner())
-    }
 }
