@@ -35,7 +35,6 @@ The backend validates the hosted image URL before passing it to Discord. The rea
 | Optional hosting | TypeScript Cloudflare Worker, R2, SHA-256 content-addressed PNGs |
 | Tests | Vitest, React Testing Library, Rust tests, Node.js Worker tests |
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for component boundaries and lifecycle details.
 
 ## Quick start (Windows)
 
@@ -60,7 +59,7 @@ npm run tauri -- dev
 
 Replace the SDK path with your extracted directory. In the app, complete the privacy introduction and enter your public numeric Discord Application ID in **Settings**. Enable activity display in Discord's privacy settings, select a running program, enter any activity text, and turn on sharing.
 
-The Application ID is public. Discord publishing uses the SDK's token-free desktop flow; no Discord client secret, bot token or user token is needed. See [SDK setup](docs/DISCORD_SDK.md).
+The Application ID is public. Discord publishing uses the SDK's token-free desktop flow; no Discord client secret, bot token or user token is needed. 
 
 ### Browser preview and SDK-free development
 
@@ -125,7 +124,6 @@ By default, the Worker serves public images through its R2 binding at its own or
 
 Uploads contain only the selected PNG bytes and bearer authentication. Images use SHA-256 object keys and are limited to 256 × 256 pixels and 128 KiB. Hosted images remain public until the bucket operator removes them.
 
-See [Cloudflare setup](cloudflare/README.md), [the icon pipeline](docs/ICON_PIPELINE.md) and [asset provenance](assets/README.md).
 
 ## Testing
 
@@ -157,7 +155,6 @@ To inspect an executable's icon without starting it:
 cargo run --manifest-path src-tauri/Cargo.toml --no-default-features --example test_icon -- 'C:\Program Files\Example\Example.exe'
 ```
 
-The command reports extraction attempts and writes original and upload-sized PNGs to a temporary directory. For native integration checks, see [`scripts/native-smoke.ps1`](scripts/native-smoke.ps1) and [DEVELOPMENT.md](DEVELOPMENT.md). A successful SDK callback or local preview alone does not prove that Discord rendered an image; inspect the actual profile when verifying a release.
 
 ## Configuration
 
