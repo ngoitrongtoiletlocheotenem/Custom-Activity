@@ -171,7 +171,6 @@ Build environment variables are documented in [`.env.example`](.env.example). Th
 | Settings → Remember descriptions | Remember submitted titles, name overrides and details per application on this device |
 | Settings → startup, reconnect and auto-resume | Control Windows startup, minimized launch, connection recovery and resuming a restarted program |
 
-Sharing is never restored automatically at launch. Remembered text is stored as plain local JSON; upload credentials use endpoint-bound, per-user DPAPI encryption. See [PRIVACY.md](PRIVACY.md) for storage locations and deletion behavior.
 
 ## Limitations
 
